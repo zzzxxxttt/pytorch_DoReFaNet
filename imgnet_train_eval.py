@@ -17,7 +17,6 @@ import torchvision.datasets as datasets
 
 from utils.i_o import *
 from nets.imgnet_alexnet import *
-from imgnet_config import cfg
 
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
