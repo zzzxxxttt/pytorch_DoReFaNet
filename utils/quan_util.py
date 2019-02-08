@@ -9,7 +9,9 @@ def uniform_quantize(k):
 
     @staticmethod
     def forward(ctx, input):
-      if k == 1:
+      if k == 32:
+        out = input
+      elif k == 1:
         out = torch.sign(input)
       else:
         n = float(2 ** k - 1)
@@ -24,15 +26,17 @@ def uniform_quantize(k):
   return qfn().apply
 
 
-class quantize_fn(nn.Module):
+class weight_quantize_fn(nn.Module):
   def __init__(self, w_bit):
-    super(quantize_fn, self).__init__()
+    super(weight_quantize_fn, self).__init__()
     assert w_bit <= 8
     self.w_bit = w_bit
     self.uniform_q = uniform_quantize(k=w_bit)
 
   def forward(self, x):
-    if self.w_bit == 1:
+    if self.w_bit == 32:
+      weight_q = x
+    elif self.w_bit == 1:
       E = torch.mean(torch.abs(x)).detach()
       weight_q = self.uniform_q(x / E) * E
     else:
@@ -53,7 +57,7 @@ def conv2d_Q_fn(w_bit, order=1):
       assert 0 < order <= 8
       self.w_bit = w_bit
       self.order = order
-      self.quantize_fn = quantize_fn(w_bit=w_bit)
+      self.quantize_fn = weight_quantize_fn(w_bit=w_bit)
 
     def forward(self, input, order=None):
       weight_q = self.quantize_fn(self.weight)
@@ -74,7 +78,7 @@ def linear_Q_fn(w_bit, order=1):
       assert 0 < order <= 8
       self.w_bit = w_bit
       self.order = order
-      self.quantize_fn = quantize_fn(w_bit=w_bit)
+      self.quantize_fn = weight_quantize_fn(w_bit=w_bit)
 
     def forward(self, input, order=None):
       weight_q = self.quantize_fn(self.weight)
