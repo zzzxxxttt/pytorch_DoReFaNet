@@ -2,7 +2,8 @@
 
 This repository is the pytorch implementation of [DoReFa-Net](https://arxiv.org/pdf/1606.06160.pdf) for neural network compression. 
 The code is inspired by the original [tensorpack implementation](https://github.com/tensorpack/tensorpack/tree/master/examples/DoReFa-Net).
-This implementation supports k-bit quantization for both weights and activations (although I only tested the weight quantization, the activation quantization should also work as expected). 
+This implementation supports k-bit quantization for weights
+(k-bit activation quantization is still under construction). 
  
 ## Requirements:
 - python>=3.5

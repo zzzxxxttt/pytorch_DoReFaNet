@@ -1,15 +1,19 @@
 import os
+import time
 import argparse
+from datetime import datetime
 
+import torch
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
+
+cudnn.benchmark = True
 import torchvision
 
 from tensorboardX import SummaryWriter
 
 from nets.cifar_resnet import *
 
-from utils.i_o import *
 from utils.preprocessing import *
 
 # Training settings
@@ -22,6 +26,10 @@ parser.add_argument('--pretrain', action='store_true', default=False)
 parser.add_argument('--pretrain_dir', type=str, default='./ckpt/resnet20_baseline')
 
 parser.add_argument('--cifar', type=int, default=10)
+
+parser.add_argument('--Wbits', type=int, default=1)
+parser.add_argument('--Abits', type=int, default=2)
+
 parser.add_argument('--lr', type=float, default=0.1)
 parser.add_argument('--wd', type=float, default=1e-4)
 
@@ -39,7 +47,6 @@ cfg = parser.parse_args()
 
 cfg.log_dir = os.path.join(cfg.root_dir, 'logs', cfg.log_name)
 cfg.ckpt_dir = os.path.join(cfg.root_dir, 'ckpt', cfg.log_name)
-# cfg.pretrain_dir = os.path.join(cfg.root_dir, 'ckpt', cfg.pretrain_name)
 
 os.makedirs(cfg.log_dir, exist_ok=True)
 os.makedirs(cfg.ckpt_dir, exist_ok=True)
@@ -70,18 +77,15 @@ def main():
                                             num_workers=cfg.num_workers)
 
   print('==> Building ResNet..')
-  model = PreActResNet20_conv_Q()
-  model.cuda()
-
-  torch.backends.cudnn.benchmark = True
+  model = PreActResNet20_conv_Q().cuda()
 
   optimizer = torch.optim.SGD(model.parameters(), lr=cfg.lr, momentum=0.9, weight_decay=cfg.wd)
-  lr_schedu = optim.lr_scheduler.MultiStepLR(optimizer, [100, 150, 180, 190], gamma=0.1)
+  lr_schedu = optim.lr_scheduler.StepLR(optimizer, 60, gamma=0.1)
   criterion = torch.nn.CrossEntropyLoss().cuda()
   summary_writer = SummaryWriter(cfg.log_dir)
 
   if cfg.pretrain:
-    load_pretrain(model, optimizer, cfg.pretrain_dir)
+    model.load_state_dict(torch.load(cfg.pretrain_dir))
 
   # Training
   def train(epoch):
@@ -90,26 +94,24 @@ def main():
 
     start_time = time.time()
     for batch_idx, (inputs, targets) in enumerate(train_loader):
-      inputs, targets = inputs.cuda(), targets.cuda()
-
-      outputs = model(inputs)
-      cls_loss = criterion(outputs, targets)
+      outputs = model(inputs.cuda())
+      loss = criterion(outputs, targets.cuda())
 
       optimizer.zero_grad()
-      cls_loss.backward()
+      loss.backward()
       optimizer.step()
 
       if batch_idx % cfg.log_interval == 0:
+        step = len(train_loader) * epoch + batch_idx
         duration = time.time() - start_time
-        print_train_log(epoch, batch_idx, {'cls_loss': cls_loss.item()},
-                        cfg.log_interval * cfg.train_batch_size / duration, duration / cfg.log_interval)
+
+        print('%s epoch: %d step: %d cls_loss= %.5f (%d samples/sec)' %
+              (datetime.now(), epoch, batch_idx, loss.item(),
+               cfg.train_batch_size * cfg.log_interval / duration))
+
         start_time = time.time()
-
-        step = epoch * len(train_loader) + batch_idx
-
-        summary_writer.add_scalar('cls_loss', cls_loss.item(), step)
+        summary_writer.add_scalar('cls_loss', loss.item(), step)
         summary_writer.add_scalar('learning rate', optimizer.param_groups[0]['lr'], step)
-        summary_writer.add_scalar('img/sec', cfg.log_interval * cfg.train_batch_size / duration, step)
 
   def test(epoch):
     # pass
@@ -123,14 +125,15 @@ def main():
       correct += predicted.eq(targets.data).cpu().sum().item()
 
     acc = 100. * correct / len(eval_dataset)
-    print_eval_log(acc)
+    print('%s------------------------------------------------------ '
+          'Precision@1: %.2f%% \n' % (datetime.now(), acc))
     summary_writer.add_scalar('Precision@1', acc, global_step=epoch)
 
   for epoch in range(cfg.max_epochs):
     lr_schedu.step(epoch)
     train(epoch)
     test(epoch)
-    save_model(model, optimizer, cfg.ckpt_dir)
+    torch.save(model.state_dict(), os.path.join(cfg.ckpt_dir, 'checkpoint.t7'))
 
   summary_writer.close()
 

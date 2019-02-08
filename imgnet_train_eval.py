@@ -15,7 +15,6 @@ import torch.utils.data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
-from utils.i_o import *
 from nets.imgnet_alexnet import *
 
 from tqdm import tqdm
@@ -29,6 +28,9 @@ parser.add_argument('--data_dir', type=str, default='/mnt/tmp/raw-data')
 parser.add_argument('--log_name', type=str, default='alexnet_all_w1o2_finetune')
 parser.add_argument('--pretrain', action='store_true', default=True)
 parser.add_argument('--pretrain_dir', type=str, default='./ckpt/alexnet_baseline')
+
+parser.add_argument('--Wbits', type=int, default=1)
+parser.add_argument('--Abits', type=int, default=32)
 
 parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--wd', type=float, default=5e-4)
@@ -57,19 +59,6 @@ if not cfg.cluster:
 
 
 def main():
-  # create model
-  print("=> creating model...")
-  model = AlexNet_Q().cuda()
-
-  # define loss function (criterion) and optimizer
-  optimizer = torch.optim.SGD(model.parameters(), cfg.lr, momentum=0.9, weight_decay=cfg.wd)
-  lr_schedu = optim.lr_scheduler.MultiStepLR(optimizer, [60, 80, 90, 95], gamma=0.1)
-  criterion = nn.CrossEntropyLoss().cuda()
-
-  # optionally resume from a checkpoint
-  if cfg.pretrain:
-    load_pretrain(model, optimizer, cfg.pretrain_dir)
-
   # Data loading code
   traindir = os.path.join(cfg.data_dir, 'train')
   valdir = os.path.join(cfg.data_dir, 'val')
@@ -98,6 +87,19 @@ def main():
                                            num_workers=cfg.num_workers,
                                            pin_memory=True)
 
+  # create model
+  print("=> creating model...")
+  model = AlexNet_Q().cuda()
+
+  # optionally resume from a checkpoint
+  if cfg.pretrain:
+    model.load_state_dict(torch.load(cfg.pretrain_dir))
+
+  # define loss function (criterion) and optimizer
+  optimizer = torch.optim.SGD(model.parameters(), cfg.lr, momentum=0.9, weight_decay=cfg.wd)
+  lr_schedu = optim.lr_scheduler.MultiStepLR(optimizer, [60, 80, 90, 95], gamma=0.1)
+  criterion = nn.CrossEntropyLoss().cuda()
+
   summary_writer = SummaryWriter(cfg.log_dir)
 
   def train(epoch):
@@ -105,29 +107,26 @@ def main():
     model.train()
 
     start_time = time.time()
-    for i, (inputs, targets) in enumerate(train_loader):
-      # measure data loading time
-      input_var = inputs.cuda()
-      target_var = targets.cuda()
-
+    for batch_idx, (inputs, targets) in enumerate(train_loader):
       # compute output
-      output = model(input_var)
-      loss = criterion(output, target_var)
+      output = model(inputs.cuda())
+      loss = criterion(output, targets.cuda())
 
       # compute gradient and do SGD step
       optimizer.zero_grad()
       loss.backward()
       optimizer.step()
 
-      if i % cfg.log_interval == 0:
-        # measure elapsed time
+      if batch_idx % cfg.log_interval == 0:
+        step = len(train_loader) * epoch + batch_idx
         duration = time.time() - start_time
-        start_time = time.time()
-        num_per_sec = cfg.train_batch_size * cfg.log_interval / duration
 
-        step = (epoch * len(train_loader) + i)
-        print('%s: epoch: %d step: %d loss: %.3f (%d examples/sec)' % (datetime.now(), epoch, i, loss, num_per_sec))
-        summary_writer.add_scalar('train_loss', loss.item(), step)
+        print('%s epoch: %d step: %d cls_loss= %.5f (%d samples/sec)' %
+              (datetime.now(), epoch, batch_idx, loss.item(),
+               cfg.train_batch_size * cfg.log_interval / duration))
+
+        start_time = time.time()
+        summary_writer.add_scalar('cls_loss', loss.item(), step)
         summary_writer.add_scalar('learning rate', optimizer.param_groups[0]['lr'], step)
 
   def validate(epoch):
@@ -155,8 +154,9 @@ def main():
 
     top1 *= 100 / len(val_dataset)
     top5 *= 100 / len(val_dataset)
-    print('------------------------------------------------------------'
-          '%s: Precision@1 %.3f%% Prec@5 %.3f%%' % (datetime.now(), top1, top5))
+    print('%s------------------------------------------------------ '
+          'Precision@1: %.2f%%  Precision@1: %.2f%%\n' % (datetime.now(), top1, top5))
+
     summary_writer.add_scalar('Precision@1', top1, epoch)
     summary_writer.add_scalar('Precision@5', top5, epoch)
 
@@ -166,12 +166,7 @@ def main():
     lr_schedu.step(epoch)
     train(epoch)
     validate(epoch)
-    # remember best prec@1 and save checkpoint
-    torch.save({'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'optimizer': optimizer.state_dict(), },
-               os.path.join(cfg.ckpt_dir, 'checkpoint.t7'))
-
+    torch.save(model.state_dict(), os.path.join(cfg.ckpt_dir, 'checkpoint.t7'))
 
 if __name__ == '__main__':
   main()
