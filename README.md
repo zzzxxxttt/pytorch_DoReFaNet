@@ -12,7 +12,7 @@ This implementation supports k-bit quantization for both weights and activations
 
 
 ## CIFAR-10:
-(Quantized models are trained from scratch instead of finetune from pretrained model.)
+(Quantized models are trained from scratch.)
 
 Model|W-bit|A-bit|Accuracy
 :---:|:---:|:---:|:---:
