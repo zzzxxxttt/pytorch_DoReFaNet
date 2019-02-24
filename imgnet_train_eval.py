@@ -26,7 +26,7 @@ parser = argparse.ArgumentParser(description='DoReFa-Net pytorch')
 
 parser.add_argument('--root_dir', type=str, default='./')
 parser.add_argument('--data_dir', type=str, default='/mnt/tmp/raw-data')
-parser.add_argument('--log_name', type=str, default='alexnet_all_w1a2_finetune')
+parser.add_argument('--log_name', type=str, default='alexnet_w1a2_finetune')
 parser.add_argument('--pretrain', action='store_true', default=True)
 parser.add_argument('--pretrain_dir', type=str, default='./ckpt/alexnet_baseline')
 
