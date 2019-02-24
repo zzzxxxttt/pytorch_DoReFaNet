@@ -12,10 +12,11 @@ cudnn.benchmark = True
 
 import torch.optim as optim
 import torch.utils.data
-import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
 from nets.imgnet_alexnet import *
+
+from utils.preprocessing import *
 
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
@@ -25,19 +26,19 @@ parser = argparse.ArgumentParser(description='DoReFa-Net pytorch')
 
 parser.add_argument('--root_dir', type=str, default='./')
 parser.add_argument('--data_dir', type=str, default='/mnt/tmp/raw-data')
-parser.add_argument('--log_name', type=str, default='alexnet_all_w1o2_finetune')
+parser.add_argument('--log_name', type=str, default='alexnet_all_w1a2_finetune')
 parser.add_argument('--pretrain', action='store_true', default=True)
 parser.add_argument('--pretrain_dir', type=str, default='./ckpt/alexnet_baseline')
 
 parser.add_argument('--Wbits', type=int, default=1)
-parser.add_argument('--Abits', type=int, default=32)
+parser.add_argument('--Abits', type=int, default=2)
 
 parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--wd', type=float, default=5e-4)
 
 parser.add_argument('--train_batch_size', type=int, default=256)
 parser.add_argument('--eval_batch_size', type=int, default=100)
-parser.add_argument('--max_epochs', type=int, default=100)
+parser.add_argument('--max_epochs', type=int, default=30)
 
 parser.add_argument('--log_interval', type=int, default=10)
 parser.add_argument('--use_gpu', type=str, default='0')
@@ -62,25 +63,15 @@ def main():
   # Data loading code
   traindir = os.path.join(cfg.data_dir, 'train')
   valdir = os.path.join(cfg.data_dir, 'val')
-  normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
-  train_dataset = datasets.ImageFolder(traindir, transforms.Compose([transforms.RandomResizedCrop(224),
-                                                                     transforms.RandomHorizontalFlip(),
-                                                                     transforms.ColorJitter(brightness=0.5,
-                                                                                            contrast=0.5,
-                                                                                            saturation=0.3),
-                                                                     transforms.ToTensor(),
-                                                                     normalize, ]))
+  train_dataset = datasets.ImageFolder(traindir, imgnet_transform(is_training=True))
   train_loader = torch.utils.data.DataLoader(train_dataset,
                                              batch_size=cfg.train_batch_size,
                                              shuffle=True,
                                              num_workers=cfg.num_workers,
                                              pin_memory=True)
 
-  val_dataset = datasets.ImageFolder(valdir, transforms.Compose([transforms.Resize(256),
-                                                                 transforms.CenterCrop(224),
-                                                                 transforms.ToTensor(),
-                                                                 normalize]))
+  val_dataset = datasets.ImageFolder(valdir, imgnet_transform(is_training=False))
   val_loader = torch.utils.data.DataLoader(val_dataset,
                                            batch_size=cfg.eval_batch_size,
                                            shuffle=False,
@@ -89,7 +80,7 @@ def main():
 
   # create model
   print("=> creating model...")
-  model = AlexNet_Q().cuda()
+  model = AlexNet_Q(wbit=cfg.Wbits, abit=cfg.Abits).cuda()
 
   # optionally resume from a checkpoint
   if cfg.pretrain:
@@ -97,7 +88,7 @@ def main():
 
   # define loss function (criterion) and optimizer
   optimizer = torch.optim.SGD(model.parameters(), cfg.lr, momentum=0.9, weight_decay=cfg.wd)
-  lr_schedu = optim.lr_scheduler.MultiStepLR(optimizer, [60, 80, 90, 95], gamma=0.1)
+  lr_schedu = optim.lr_scheduler.MultiStepLR(optimizer, [15, 20, 25], gamma=0.1)
   criterion = nn.CrossEntropyLoss().cuda()
 
   summary_writer = SummaryWriter(cfg.log_dir)
@@ -167,6 +158,7 @@ def main():
     train(epoch)
     validate(epoch)
     torch.save(model.state_dict(), os.path.join(cfg.ckpt_dir, 'checkpoint.t7'))
+
 
 if __name__ == '__main__':
   main()

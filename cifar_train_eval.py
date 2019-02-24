@@ -77,7 +77,7 @@ def main():
                                             num_workers=cfg.num_workers)
 
   print('==> Building ResNet..')
-  model = PreActResNet20_conv_Q().cuda()
+  model = resnet20(wbits=cfg.Wbits, abits=cfg.Abits).cuda()
 
   optimizer = torch.optim.SGD(model.parameters(), lr=cfg.lr, momentum=0.9, weight_decay=cfg.wd)
   lr_schedu = optim.lr_scheduler.StepLR(optimizer, 60, gamma=0.1)
