@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.quan_util import *
+from utils.quant_dorefa import *
 
 
 class PreActBlock_conv_Q(nn.Module):
@@ -68,13 +68,11 @@ class PreActResNet(nn.Module):
 
 
 def resnet20(wbits, abits, num_classes=10):
-  return PreActResNet(PreActBlock_conv_Q, [3, 3, 3], wbits, abits,
-                      num_classes=num_classes)
+  return PreActResNet(PreActBlock_conv_Q, [3, 3, 3], wbits, abits, num_classes=num_classes)
 
 
 def resnet56(wbits, abits, num_classes=10):
-  return PreActResNet(PreActBlock_conv_Q, [9, 9, 9], wbits, abits,
-                      num_classes=num_classes)
+  return PreActResNet(PreActBlock_conv_Q, [9, 9, 9], wbits, abits, num_classes=num_classes)
 
 
 if __name__ == '__main__':

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 
-from utils.quan_util import *
+from utils.quant_dorefa import *
 
 
 class AlexNet_Q(nn.Module):
