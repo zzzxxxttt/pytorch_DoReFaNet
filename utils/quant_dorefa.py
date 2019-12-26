@@ -41,8 +41,9 @@ class weight_quantize_fn(nn.Module):
       weight_q = self.uniform_q(x / E) * E
     else:
       weight = torch.tanh(x)
-      weight = weight / 2 / torch.max(torch.abs(weight)) + 0.5
-      weight_q = 2 * self.uniform_q(weight) - 1
+      max_w = torch.max(torch.abs(weight)).detach()
+      weight = weight / 2 / max_w + 0.5
+      weight_q = max_w * (2 * self.uniform_q(weight) - 1)
     return weight_q
 
 
@@ -101,15 +102,10 @@ if __name__ == '__main__':
 
   a = torch.rand(1, 3, 32, 32)
 
-  Conv2d = conv2d_Q_fn(w_bit=2)
-  conv = Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1)
-  act = activation_quantize_fn(a_bit=3)
+  Conv2d = conv2d_Q_fn(w_bit=1)
+  conv = Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
 
-  b = conv(a)
-  b.retain_grad()
-  c = act(b)
-  d = torch.mean(c)
-  d.retain_grad()
-
-  d.backward()
-  pass
+  img = torch.randn(1, 256, 56, 56)
+  print(img.max().item(), img.min().item())
+  out = conv(img)
+  print(out.max().item(), out.min().item())
